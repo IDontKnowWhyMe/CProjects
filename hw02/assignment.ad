@@ -1,0 +1,492 @@
+---
+title: "HW02: Hledání min"
+layout: "homework"
+list-of-files: ["minesweeper.c"]
+solution-path: /home/kontr/pb071/hw02/minesweeper
+publish: now
+deadline-early: 2022-03-20 24:00
+deadline-final: 2022-03-23 24:00
+authors:
+  - xsebek
+  - xrozehn
+  - xmasar
+  - xstanko2
+---
+
+== Představení úkolu
+
+V této úloze vám představíme tradiční
+https://cs.wikipedia.org/wiki/Hled%C3%A1n%C3%AD_min[hledání min] a procvičíte si
+především práci s poli.
+
+Vašim úkolem bude dokončit implementaci hry a většinu její logiky tak, aby
+se dala zahrát v terminálu. Pokud jste sami ještě hledání min nehráli, tak si
+ho můžete vyzkoušet například https://minesweeper.online/[online].
+
+== Zadání
+
+Hledání min je jednoduchá puzzle hra, ve které je vašim cílem nalézt všechny
+miny na hracím poli. Políčko na hracím poli je buď prázdné, nebo obsahuje minu.
+Během hry jsou políčka ve třech stavech: _skryté_, _odkryté_ nebo _označené vlajkou_.
+
+Jako hráč máte během tahu možnost odkrýt skryté políčko nebo nějaké políčko označit
+vlajkou (respektive odznačit). Pokud odkryjete minu, vaše hra končí a prohráli jste.
+Naopak pokud se vám podaří odkrýt všechna prázdná políčka bez odhalení miny, vyhráli jste.
+Pokud máte podezření, že políčko skrývá minu, můžete ho označit vlajkou - takové pole
+nelze omylem odkrýt, ale na výhru to nemá vliv.
+
+Pokud během tahu odkryjete volné políčko, zobrazí se na něm počet sousedících min.
+Pokud s volným políčkem sousedí alespoň jedna mina, zobrazí se na něm počet sousedních
+min a odkryje se pouze toto políčko. Pokud kolem sebe žádnou minu nemá, zůstane
+prázdné a dojde k řetězovému odkrytí sousedních polí (tzv. _floodfill_). Tato
+políčka se postupně odkrývají podle stejných pravidel. Odkryje se tak „jezero“ volných
+políček s „břehy“ číselných políček - ty už sousedí s minami a floodfill u nich končí.
+
+V našem programu budeme navíc uvažovat, že vedoucí předmětu svou hru vždy začíná
+postupným kliknutím na všechny rohy herního pole, kde *nesmí* být umístěna mina.
+
+Také nebudeme uvažovat herní plán, který by měl některou dimenzi menší než 3
+nebo větší než 99 (viz konstanty `MIN_SIZE` a `MAX_SIZE` v kostře).
+
+=== Herní plán
+
+Pro reprezentaci herního plánu použijeme dvourozměrné obdélníkové pole.
+
+Při indexování v tomto 2D poli budeme vždy považovat první index jako řádek a druhý
+jako sloupec. V tomto pořadí budou pak také zadány např. instrukce tahů.
+Ilustrujeme si to na jednoduchém plánku 4x4 s minou na pozicích `(0,1)` a `(1,3)`:
+
+----
+     0   1   2   3
+   +---+---+---+---+
+ 0 | . | M | . | . |
+   +---+---+---+---+
+ 1 | . | . | . | M |
+   +---+---+---+---+
+ 2 | . | . | . | . |
+   +---+---+---+---+
+ 3 | . | . | . | . |
+   +---+---+---+---+
+----
+
+Políčka v tomto plánu budeme reprezentovat hodnotou typu `uint16_t`. Tedy funkcím budeme
+předávat proměnnou znázorňující plán v podobě `uint16_t board[row_size][col_size]`.
+
+Připomeňme, že během hry mohou být políčka (ne)odkrytá, případně označená vlaječkou.
+Ukažme zde kompletní průběh krátké hry:
+
+----
+     0   1   2   3                       0   1   2   3
+   +---+---+---+---+                   +---+---+---+---+
+ 0 |XXX|XXX|XXX|XXX|                 0 |XXX|XXX|XXX|XXX|
+   +---+---+---+---+                   +---+---+---+---+
+ 1 |XXX|XXX|XXX|XXX|  Klik na [2,1]  1 | 1 | 1 | 2 |XXX|  Flag na [1,3]
+   +---+---+---+---+       ->          +---+---+---+---+       ->
+ 2 |XXX|XXX|XXX|XXX|   (floodfill)   2 |   |   | 1 | 1 |
+   +---+---+---+---+                   +---+---+---+---+
+ 3 |XXX|XXX|XXX|XXX|                 3 |   |   |   |   |
+   +---+---+---+---+                   +---+---+---+---+
+
+     0   1   2   3                       0   1   2   3
+   +---+---+---+---+                   +---+---+---+---+
+ 0 |XXX|XXX|XXX|XXX|                 0 |XXX| M |XXX|XXX|
+   +---+---+---+---+                   +---+---+---+---+
+ 1 | 1 | 1 | 2 |_F_|  Klik na [0,1]  1 | 1 | 1 | 2 |_F_|
+   +---+---+---+---+       ->          +---+---+---+---+  -> Prohra kliknutím na minu
+ 2 |   |   | 1 | 1 |                 2 |   |   | 1 | 1 |
+   +---+---+---+---+                   +---+---+---+---+
+ 3 |   |   |   |   |                 3 |   |   |   |   |
+   +---+---+---+---+                   +---+---+---+---+
+----
+
+Reprezentace těchto stavů políčka na 16 bitech *je zcela na vás*. 
+Musíte vědet reprezentovat všechny stavy políčka, včetně počtu sousedících min. 
+V závislosti na vámi zvolené reprezentaci tak mohou být některé požadované funkce jednodušší.
+
+=== Formátování vstupu a výstupu
+
+Několik funkcí v našem programu bude pracovat se vstupem a výstupem (v tomto
+kontextu budeme vždy myslet standardní vstup a výstup), proto si zadefinujeme,
+jak se má k určitým znakům přistupovat a jak zobrazovat určité stavy políčka.
+
+*Pro načítání* pole ze vstupu budeme používat tuto tabulku pro převod validního
+znaku na políčko:
+
+[cols="^1,<8", role="table table-sm table-group col-12 col-lg-8"]
+|=======
+|X  | Neodkryté políčko
+|M  | Políčko skrývající minu (Mine)
+|F  | Políčko správně označené vlajkou (Flag)
+|W  | Políčko špatně označené vlajkou (Wrong flag)
+|.  | Odkryté políčko (nerozlišujeme počet sousedních min)
+|0-8| Odkryté políčko s počtem sousedních min
+|=======
+
+NOTE: Velká a malá písmena budeme při načítání považovat za ekvivalentní. Toto
+je nutné mít na paměti a řádně ošetřit.
+
+*Pro vypsání* konkrétního políčka, budeme používat tuto tabulku pro převod
+validního políčka na řetězec:
+
+[cols="<8,^1", role="table table-sm table-group col-12 col-lg-8"]
+|=======
+|Neodkryté políčko| XXX
+|Políčko označené vlajkou| \_F_
+|Číselně označené pole sousedící s minami (podle jejich počtu)| 1-8
+|Prázdné políčko (vyplněné mezerami)|
+|=======
+
+Všimněte si prosím, že z pohledu vstupu (hry) je důležité rozlišit vnitřní stavy
+políček, které z pohledu výstupu (hráče) nejsou známé, jako jsou například
+skrytá mina nebo špatně umístěná vlajka.
+
+=== Práce se spustitelnými soubory
+
+V souboru `main.c` je naprogramovaná základní funkcionalita min, která využívá vaše
+implementované funkce.
+
+Přepínače pro binární soubor `minesweeper` sloužící k hraní jsou následující:
+
+[cols="^1,<4", role="table table-sm table-group"]
+|===
+| `--rows x` | Nastavuje počet řádků na `x` ^1^.
+| `--cols y` | Nastavuje počet sloupců na `y` ^1^.
+| `--generate` | Namísto načítání se herní plán vygeneruje (nutné mít implementovanou funkci `generate_random()`).
+| `--mines m`| V případě použití `--generate` nastavuje počet min na `m` (defaultně `rows * cols / 10`).
+| `--find-mines`| Spustí bonusové rozšíření find_mines() a vypíše výsledek.
+|===
+
+^1^ Výchozí hodnota je `10`. +
+
+Výchozí hodnoty si můžete na vlastní zodpovědnost změnit v souboru `main.c`
+
+Po spuštění je nutné na standardní vstup zadat herní plán, který se předá vaší
+funkci `load_board()` (neplatí při použití přepínače `--generate`).
+Následně se spustí hra, kterou můžete hrát pomocí dvou jednoduchých příkazů:
+
+[cols="^1,<4", role="table table-sm table-group"]
+|===
+| `r row col` | Odhalí políčko na souřadnicích `[row, col]`.
+| `f row col` | Položí / odstraní vlajku z políčka `[row, col]`.
+|===
+
+Druhý ze spustitelných souborů (tedy `minesweeper-tests`) nemá žádné přepínače
+a po spuštění otestuje vaší implementaci pomocí testů nanečisto.
+
+Na zkompilování spustitelných souborů, viz poznámky na konci stránky.
+
+== Požadavky
+
+Od programu budeme očekávat mnoho různých funkcí. Proto si na začátek připravíme pomocné
+funkce, které vám pomohou s dekompozicí programu a nám zase ulehčí testovaní.
+
+=== Pomocné funkce
+
+Vrátí `true`, když se na políčku, daném parametrem, nachází mina. Jinak vrátí `false`.
+
+[source, c]
+----
+bool is_mine(uint16_t cell)
+----
+
+Vrátí `true`, když se na políčku, daném parametrem, nachází vlajka. Jinak vrátí `false`.
+
+[source, c]
+----
+bool is_flag(uint16_t cell)
+----
+
+Vrátí `true`, když je políčko, daném parametrem, odkryté. Jinak vrátí `false`.
+
+[source, c]
+----
+bool is_revealed(uint16_t cell)
+----
+
+Vrátí počet min v okolí políčka, které je zadané parametrem. Pokud se
+jedná o minu, vrátí 0.
+
+[source, c]
+----
+int get_number(uint16_t cell)
+----
+
+=== Funkce pro vstup a výstup
+
+Dále budeme potřebovat funkce, které budou pracovat s vstupem a výstupem.
+
+[source, c]
+----
+bool set_cell(uint16_t *cell, char val)
+----
+
+Funkce má za úkol přeložit hodnotu `val` do vaší reprezentace na dané políčko v plánku.
+Jako parametry dostane ukazatel na políčko v herním plánu a znak, který má na daném
+políčku být. Význam znaku naleznete v sekci o formátování.
+
+Pokud proběhne zápis do buňky v pořádku, vrátí `true`, jinak `false`. Dobře si
+rozmyslete, jaké nevalidní případy mohou nastat.
+
+NOTE: Bez správného fungování této funkce nejsme schopní pracovat s vámi zvolenou
+ reprezentací jednotlivých stavů políčka a pravděpodobně vám neprojdou žádné testy.
+ Dejte si na jejím správném fungování záležet, protože s její pomocí budeme testovat
+ v podstatě celou vaší implementaci.
+
+'''
+
+[source, c]
+----
+int postprocess(size_t rows, size_t cols, uint16_t board[rows][cols])
+----
+
+Funkce `postprocess()` bude ošetřovat všechny nevalidní stavy načteného herního plánu.
+Máte garantované, že funkce `postprocess()` bude volána těsně po volání `set_cell()`.
+Tedy pole bude nastaveno dle vaší reprezentace políček. Jejím úkolem
+je především dopočítat počet okolních min pro načtené odkryté a zakryté políčka (`'.'`, `'X'`), ale také
+zkontrolovat, že načítaná čísla odpovídají počtu okolních min.
+
+Tato funkce může při kontrole načteného plánku narazit na několik nevalidních stavů:
+
+* dimenze herního pole (tedy `rows` nebo `cols`) je menší než 3 (`MIN_SIZE`) nebo větší než 99 (`MAX_SIZE`)
+* odkrytá políčka označená číslicemi nesouhlasí se skutečným počtem sousedících min
+* v rohu herního plánku je umístěna mina (nechcete přeci naštvat vedoucího předmětu)
+* neobsahuje žádnou minu, čímž by hra nedávala smysl
+
+V těchto zmíněných případech vaše funkce musí skončit s návratovým kódem `-1` a
+samotný obsah pole je nedefinovaný (tedy nebude testován).
+
+Pokud nedojde k žádnému nekorektnímu stavu, tak funkce vrátí počet min v herním
+plánu a `board` bude korektní herní plán s dopočítanými okolními minami na
+*všech* políčkách (kromě samotných min).
+
+NOTE: I tato funkce je důležitá pro testování všeho ostatního. Dejte si na
+implementaci záležet.
+
+'''
+
+[source, c]
+----
+int load_board(size_t rows, size_t cols, uint16_t board[rows][cols])
+----
+
+Tato funkce dostane jako parametry velikost herního plánu a pole, do kterého plán
+načte. Velikost plánu (parametry `rows` a `cols`) zjistí program používající vaše
+funkce a není to součástí zadání.
+
+Úlohou této funkce je načíst plánek ze standardního vstupu (viz sekce formátování vstupu)
+, převést každý validní znak do vámi zvolené reprezentace a tuto reprezentaci uložit
+do pole `uint16_t board[rows][cols]`.
+Přitom přeskakuje znaky, které nejsou v tabulce definovány.
+
+Vyplňování pole probíhá zleva doprava, počínaje prvním řádkem a sloupcem. Po naplnění
+celého řádku (do velikosti `cols`) se přejde na první sloupec o řádek níže a takto pokračuje do
+posledního řádku a sloupce (tedy až na políčko `board[rows-1][cols-1]`).
+
+Po načítání je potřeba ověřit, že herní plán je korektní. Na to můžete použít
+předcházející funkci `postprocess()`, ta vám zároveň dopočítá i okolní miny.
+
+Pokud funkce úspěšně načte `rows * cols` validních znaků do pole,
+tak vrátí návratovou hodnotu funkce `postprocess()`. Toto chování je v kostře již připravené.
+V případe chyby vrací hodnotu `-1`.
+
+'''
+
+To by bylo vše pro vstup, nyní budeme chtít funkce, které nám na standardní výstup
+v konkrétním formátu vypíší aktuální stav herního plánku tak, jak jej uvidí hráč.
+
+[source, c]
+----
+char show_cell(uint16_t cell)
+----
+
+Vrátí znak, který reprezentuje políčko zadané v argumentu z pohledu hráče (dle tabulky pro formátování výstupu).
+Zde uvažujeme pouze prostřední znak z tabulky formátování.
+Tedy při neodkrytém políčku vracíte pouze `X` místo `XXX` a při vlajce pouze znak `F`
+místo `\_F_`, při označení sousedních min pouze číslo, minu jako `M` a při prázdném
+políčku znak mezery `' '`.
+
+NOTE: Toto je další funkce, která bude použita na testování, takže musí fungovat korektně,
+aby prošly testy na ostatních funkcích.
+
+'''
+
+[source, c]
+----
+int print_board(size_t rows, size_t cols, uint16_t board[rows][cols]);
+----
+
+Parametry `rows` a `cols` stejně jako při vstupu udávají velikost herního pole.
+Všimněte si, že funkce nic nevrací, jejím úkolem je tak pouze výpis, kdy vypíše
+celé herní pole na standardní výstup, dle pravidel v sekci o formátování výstupu.
+
+Návratová hodnota této funkce bude `0` v případě, že se funkci rozhodnete implementovat,
+jinak ji ponechte `-1`. U této funkce nepředpokládáme, že by mohly nastat chybové stavy,
+které byste museli ošetřit.
+
+Samotný výstup této funkce v sobě musí obsahovat i očíslování řádků, sloupců a také
+ohraničení pole a buněk. Zde se můžete řídit pravidlem, že každá buňka (políčko) má
+3 znaky na šířku a zabírá 1 řádek.
+
+Zde je konkrétní případ výstupu pro náhodně rozehranou hru:
+
+----
+     0   1   2   3   4   5   6   7   8   9  10 
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 0 |XXX| 1 |   |   |   |   | 1 | 1 | 1 |   |   |
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 1 |XXX| 1 |   |   |   |   | 1 |XXX| 1 |   |   |
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 2 |XXX| 2 | 1 |   |   |   | 1 | 2 | 2 | 1 |   |
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 3 |XXX|XXX| 2 |   |   |   |   | 1 |XXX| 1 |   |
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 4 |XXX|XXX| 2 |   |   |   |   | 1 | 1 | 1 |   |
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 5 |XXX| 3 | 2 |   |   |   |   |   |   | 1 | 1 |
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 6 |XXX|XXX| 2 |   |   |   |   |   | 2 |_F_|XXX|
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 7 |XXX|XXX| 2 |   |   |   |   | 1 |_F_|_F_|XXX|
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 8 |XXX| 3 | 1 |   | 1 | 1 | 1 | 1 | 2 | 2 |XXX|
+   +---+---+---+---+---+---+---+---+---+---+---+
+ 9 | 1 | 1 |   |   | 2 |_F_| 2 |   | 2 |_F_|XXX|
+   +---+---+---+---+---+---+---+---+---+---+---+
+10 |   |   |   |   | 2 |_F_| 2 | 1 |_F_|XXX|XXX|
+   +---+---+---+---+---+---+---+---+---+---+---+
+----
+
+Všimněte si především formátování dvouciferných číslování řádků (resp. sloupců)
+nebo použitých znaků pro oddělování buněk.
+
+Pokud je číselné označení sloupce resp. řádku jednociferné číslo, zarovnáváme
+jej "na střed" (tedy před ním i za ním je mezera). Pokud je takové číslo dvojciferné,
+zarovnáváme jej "doleva" (tedy má mezeru pouze za sebou).
+
+Pokud si nejste v této funkci něčím jistí, *je vždy směrodatné chování vzorové
+implementace*, kde si můžete sami různé situace namodelovat a vyzkoušet.
+
+=== Herní mechanika
+
+[source, c]
+----
+int reveal_cell(size_t rows, size_t cols, uint16_t board[rows][cols], size_t row, size_t col)
+----
+
+Simuluje kliknutí hráče na políčko v herním plánu dle zadaných souřadnic `row` a `col`.
+Pokud je odkryté políčko prázdné (tedy nemá číslo a nesousedí s žádnou minou),
+spustí se na tomto místě voláním funkce `reveal_floodfill()` proces _floodfillu_.
+
+Mezi nevalidní tahy patří:
+
+* pokus o odkrytí již odkrytého políčka
+* pokus o odkrytí políčka označeného vlajkou
+* pokus o odkrytí políčka mimo hranice herního plánu
+
+V těchto případech vrací hodnotu `-1`, jinak vrací `0` a při odkrytí a výbuchu
+miny vrací `1`.
+
+'''
+
+[source, c]
+----
+int reveal_single(uint16_t *cell)
+----
+
+Funguje stejně jako `reveal_cell()`, ale odkrývá právě jedno políčko (tedy bez _floodfillu_).
+Tuto funkci je vhodné použít k zabránění duplikace kódu ve funkci `reveal_cell()` a `reveal_floodfill()`.
+
+'''
+
+[source, c]
+----
+void reveal_floodfill(size_t rows, size_t cols, uint16_t board[rows][cols], size_t row, size_t col)
+----
+
+Tato funkce odkrývá *všech osm* polí sousedících s *prázdným políčkem* zadaném souřadnicemi
+`row` a `col`. Při nalezení prázdného políčka se pokračuje v odkrývání jeho sousedů.
+V tomto případě je pro vás velmi elegantním a nejjednodušším řešením použití
+rekurze, i když to v jazyce C není nejoptimálnější řešení. Rekurze ale není
+pro splnění této funkce podmínkou.
+
+Volání této funkce nad neprázdným políčkem není definované a nebude se testovat.
+
+'''
+
+[source, c]
+----
+int flag_cell(size_t rows, size_t cols, uint16_t board[rows][cols], size_t row, size_t col)
+----
+
+Označí políčko vlajkou. Pokud toto políčko již vlajkou označené bylo, odstraní
+ji. V obou případech vrátí nový počet zbývajících min, tedy `mine_count - flagged_cells`.
+
+'''
+
+[source, c]
+----
+bool is_solved(size_t rows, size_t cols, uint16_t board[rows][cols])
+----
+
+Tato funkce rozhodne, zda je herní pole vyřešené. To nastane v případě, kdy
+_počet neodkrytých políček_ je roven _počtu min_. Pokud je vyřešené, vrací
+hodnotu `true`, jinak `false`.
+
+== Bonusové rozšíření
+
+[source, c]
+----
+int generate_random_board(size_t rows, size_t cols, int mines, uint16_t board[rows][cols])
+----
+
+Vygeneruje herní plán určený počtem řádků, sloupců a min. Miny musí být
+náhodně rozložené po herním pláně. V případě, že bude „náhodnost“ splňovat
+nějaký očividný vzor, budou za to ztržené body (opravuje cvičící).
+Pozorně se zamyslete, jaké podmínky musí pole splňovat, dle zadání
+této úlohy.
+
+Navrátovou hodnotu určuje funkce `postprocess()` (jako v
+`load_board()`), která dopočítá u políček okolní miny a tím vytvoří z plánu
+korektní herní plán připraven na hru. V případe chyby vrací `-1`.
+
+'''
+
+[source, c]
+----
+int find_mines(size_t rows, size_t cols, uint16_t board[rows][cols])
+----
+
+Tato funkce v zadaném herním poli označí všechny jednoznačné miny (označí je vlajkou).
+Pojmem jednoznačná mina se rozumí neodkryté políčko, které leží v okolí odkrytého
+čísla `n`, které má jako své sousedy právě `n` neodkrytých políček.
+
+Pozor, v této funkci nebudete vědět, kde se miny nachází. Proto je vaší úlohou
+zároveň i znovu načíst herní plán a uložit ho do `board` zadaným parametrem funkce.
+Herní pole bude zadané na standardní vstup stejně, jak ve funkci `load_board()`
+s dvěma malými změnami:
+
+* Na vstupu **akceptujte pouze** znaky `'X'` a `'0'` - `'8'`, všechny ostatní ignorujte.
+  Načítavat se jich bude přesně `rows * cols`.
+* Nemusíte kontrolovat správnost vstupu (to koneckonců ani nejde, když nevíte, kde jsou miny).
+
+Návratová hodnota je počet nálezených min. V případe chyby vrací `-1`.
+
+== Poznámky
+
+Myslete na to, že v některých funkcích je nutné uvažovat i nad situací, že
+herní plán do nich vstupuje se „špinavými“ daty. Tedy nemusí být např.
+nutně vynulovaný.
+
+Pro pokročilé vlastní testování se vám může hodit nový soubor `main.c` který
+bude volat vaše implementované řešení.
+
+Vzorovou implementaci najdete na Aise `/home/kontr/pb071/hw02/minesweeper`.
+
+Pro zkompilování vašich souborů a testů je přiložený `CMakeLists.txt` soubor. Díky němu si
+můžete kompilaci zjednodušit do následujícího příkazu: +
+`mkdir out && cd out && cmake .. && make` +
+Výsledkem jsou spustitelné soubory v adresáři `hw02/out`, ve kterém se
+budete nacházet po zadání daného příkazu.
+
+Vzorová implementace podporuje i tah `debug` (kromě `reveal` a `flag`), který
+nebere žádné parametry a vypíše vám na obrazovku odkryté pole.

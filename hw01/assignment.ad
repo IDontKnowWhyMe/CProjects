@@ -1,0 +1,435 @@
+---
+title: "HW01: Programátorská kalkulačka"
+layout: "homework"
+list-of-files: ["main.c"]
+solution-path: /home/kontr/pb071/hw01/calc
+publish: now
+deadline-early: 2022-03-06 24:00
+deadline-final: 2022-03-09 24:00
+authors:
+  - Veronika Hanulíková: 492760@mail.muni.cz
+  - Dávid Šutor: sutor@mail.muni.cz
+  - Juraj Marcin: jurajmarcin@mail.muni.cz
+  - Vojtěch Škaroupka: 485232@mail.muni.cz
+---
+
+[#intro]
+== Představení úkolu
+
+V této domácí úloze si vyzkoušíte vytvořit základní programátorskou
+kalkulačku s pamětí.
+
+[#assignment]
+== Zadání
+Vaším úkolem je napsat program, který se bude chovat jako jednoduchá
+*programátorská kalkulačka*, tedy kalkulačka, která pracuje *pouze
+s nezápornými čísly*.
+
+Vstup vaší kalkulačky bude řetězec čísel a operací.
+Každá operace, kterou kalkulačka podporuje, je označena právě jedním ASCII
+znakem.
+Všimněte si, že v příkazech se rozlišuje mezi velkými a malými písmeny.
+
+Základním registrem na kalkulačce bude akumulátor, ve kterém se bude
+ukládat aktuální hodnota čísla.
+Akumulátor reprezentuje také číslo, které je aktuálně na displeji
+kalkulačky.
+Kalkulačka bude podporovat 64-bitová čísla, pro jejich reprezentaci zvolte
+vhodný datový typ.
+
+Dále bude kalkulačka podporovat paměť, která se bude chovat stejně jako na
+stolní kalkulačce.
+Bude tedy možné do ní uložit číslo,
+číslo vyvolat a paměť vymazat.
+Po spuštění kalkulačky je paměť vynulovaná.
+
+Vaše kalkulačka bude mít i příkaz pro načítání čísla ve zvoleném formátu
+(binární, desítková, osmičková a šestnáctková soustava).
+Dále bude možné čísla v těchto formátech také vypsat.
+
+[NOTE]
+====
+Nezapomeňte svůj kód vhodně dekomponovat na pomocné funkce.
+====
+
+[#requirements]
+== Požadavky
+
+Níže naleznete popis formátu vstupu, výstupu a jednotlivých příkazů.
+Pro lepší srozumitelnost uvedených příkladů ale nejprve probereme komentáře.
+
+[#requirements-comments-numbers]
+=== Komentáře a zápis čísel
+
+Komentáře začínají znakem `;` a končí znakem odřádkování `\n` nebo koncem
+vstupu (pokud nastane dříve než se ukončí řádek).
+Samotný komentář nepatří mezi příkazy a tedy sám o sobě nezpůsobí vypsání
+aktuální hodnoty akumulátoru.
+Může ale posloužit i jako ukončení předchozího příkazu a tedy v důsledku
+vypsání vyvolat.
+
+------------------------------------------
+; na vstupu se nenachazi zadny prikaz, komentar tedy nevyvola zadny vypis
+------------------------------------------
+
+Na vstupu se může nacházet libovolný (a tedy i nulový) počet bílých znaků
+a to na jakémkoliv místě.
+Korektní zápis čísla `1043` je tedy `1 0 4 3`, `10 43` i s použitím znaku
+nového řádku:
+
+------------------------------------------
+10
+
+43
+------------------------------------------
+
+Chování vstupu, kde prázdný řádek nahradíme komentářem, si můžete vyzkoušet
+na referenční implementaci.
+
+[#requirements-input]
+=== Vstup
+
+Příkazy jsou zadány vždy jedním ASCII znakem, po kterém následují argumenty.
+Některé příkazy (například pro práci s paměti) nevyžadují žádné argumenty.
+Jiné, typicky aritmetické operátory, mohou vyžadovat i dva argumenty - pak
+prvním (levým) argumentem je akumulátor a druhým je číslo následující
+za operátorem.
+Výjimkou jsou příkazy pro změnu soustavy, které mohou vystupovat i v roli
+argumentu jiného příkazu (přičemž samy vyžadují vstup).
+
+* Příkaz `P` přiřadí do akumulátoru číslo, případně jej přepíše, pokud už
+nějaké obsahuje.
+* Příkaz `=` oproti tomu způsobí pouze vypsání aktuální hodnoty akumulátoru.
+* Příkaz `N` způsobí vymazání (vynulování) aktuální hodnoty uložené
+v akumulátoru.
+
+V níže uvedeném příkladu značí `#` řádek s výstupem kalkulačky.
+Více o formátu výstupu v sekci link:#requirements-output[Výstup].
+
+------------------------------------------
+P 21
+; okamzite provedeni prikazu vyse - ukonceni predchoziho vstupu
+# 21
+
+P 22
+=
+# 22
+# 22
+
+; jednotlive prikazy nemusi byt oddeleny novym radkem
+P 23 =
+# 23
+# 23
+
+N
+# 0
+------------------------------------------
+
+[example]
+====
+Vysvětlivka: Akumulátor bude na začátku výpočtu vynulovaný.
+Nejdříve načteme číslo `21`, následný komentář způsobí ukončení příkazu
+a tedy dojde k vypsání akumulátoru.
+Ve druhé skupině způsobí ukončení příkazu přiřazení příkaz výpisu
+akumulátoru.
+První číslo 22 tedy pochází z příkazu `P`, druhé z příkazu `=`.
+Třetí příkaz je pak identický s příkazem druhým, pouze od sebe nejsou
+příkazy odděleny odřádkováním.
+Komentář před třetím příkazem nezpůsobí ukončení vstupu předchozího příkazu,
+neboť ten nevyžaduje žádné argumenty.
+====
+
+Komentáře zároveň není nutné použít po každé operaci nebo načtení čísla,
+pouze napomohou k lepší přehlednosti.
+
+
+[#requirements-operations-arithmetic]
+==== Aritmetika
+
+Jednoznakové příkazy operují přímo s akumulátorem. Podporované příkazy jsou
+`+` (sčítání), `-` odčítání, `*` (násobení), `/` (celočíselné dělení), `%`
+(modulo, tedy zbytek po celočíselném dělení).
+
+Příklad vstupu obsahující aritmetické operace a odpovídající výstup:
+
+------------------------------------------
+P 200 ;
+# 200
+/ 5 ;
+# 40
+% 6 ;
+# 4
+=
+# 4
+------------------------------------------
+
+[#requirements-operations-bit]
+==== Bitové operace
+
+Další skupinou operací k implementaci budou jednoduché bitové
+operace - logické bitové posuny.
+Posun doleva představuje znak `<` (doprava `>`), následován bude počtem
+bitů, o který se má provést.
+
+Příklad:
+
+------------------------------------------
+P 10 ;
+# 10
+< 3 ;
+# 80
+------------------------------------------
+
+Stejný vstup můžeme zapsat úsporněji nahradíme-li znak nového
+řádku (`'\n'`) mezerou `' '`:
+
+------------------------------------------
+P 21 + 43 * 5 =
+# 21
+# 64
+# 320
+# 320
+------------------------------------------
+
+[#requirements-operations-digits]
+==== Číselné soustavy
+
+Pokud není uvedeno na vstupu jinak, bude kalkulačka pracovat s čísly
+v desítkové soustavě.
+Pro změnu číselné soustavy bude potřeba před dané číslo zapsat odpovídající
+příkaz, avšak platí, že změna číselné soustavy má v kalkulačce dvojí roli:
+
+* samostatný příkaz, který není následován žádným číslem,
+* modifikátor číselné soustavy, ve které je zadán argument jiné operace.
+
+Tak jako tak, ve chvíli, kdy kalkulačka narazí na změnu soustavy, dojde
+k vypsání aktuální hodnoty akumulátoru v dané číselné soustavě
+na samostatný řádek.
+
+Pokud nevystupuje změna číselné soustavy v roli příkazu, ale v roli
+modifikátoru, bude kalkulačka v této soustavě načítat právě jedno číslo.
+Pokud vystupuje v roli samostatného příkazu, nenásleduje za ní žádné
+číslo a slouží pouze pro výpis hodnoty akumulátoru.
+
+Podporované číselné soustavy:
+
+* binární - příkaz `T`, např. `T 11010` se vyhodnotí jako číslo `26`,
+* osmičková - příkaz `O`, např. `O 60` se vyhodnotí jako číslo `48`,
+* šestnáctková - příkaz `X`, např. `X AB`, `X aB` i `X ab` se vyhodnotí
+jako číslo `171`
+   ** načítání podporuje velká i malá písmena, u výpisu v šestnáctkové
+soustavě však použijte pouze znaky `0-9` a `A-F` (tedy velká písmena).
+
+Příklad:
+
+------------------------------------------
+P 15 ;
+# 15
+* X 1a ;
+# F
+# 390
+O ;
+# 606
+------------------------------------------
+
+[example]
+====
+Vysvětlivka:
+Nejprve dojde k přiřazení čísla 15 do akumulátoru, které je následně vypsáno
+díky komentáři ukončujícímu argument příkazu.
+Následně je zadán příkaz násobení, jehož argument je zadáván v šestnáctkové
+soustavě.
+V tuto chvíli dojde k výpisu akumulátoru, který drží hodnotu 15
+(v šestnáctkové soustavě F).
+Kalkulačka načte číslo 1a (ukončeno komentářem), což je šestnáctkově 26.
+Načtením tohoto čísla dále končí vstup příkazu násobení, tento je tedy jako
+ukončený dále vypsán.
+Tedy, 15 (akumulátor) krát 26 (hexa 1a) je 390, což je současně nová hodnota
+akumulátoru i hodnota vypsaná na displej.
+Následný příkaz osmičkové soustavy `O` vypíše hodnotu akumulátoru vyjádřenou
+v osmičkové soustavě.
+====
+
+[#requirements-operations-memory]
+==== Práce s pamětí
+
+Uložení čísla do paměti se děje pomocí příkazu `M`.
+Pokud na něj kalkulačka narazí, pak přičte aktuální hodnotu akumulátoru do
+paměti (na počátku výpočtu je paměť vynulovaná).
+Samotný obsah akumulátoru není nijak změněn.
+
+Aktuální hodnota v paměti se vynuluje pomocí příkazu `R`.
+
+Konečně, paměť zpřístupníme příkazem `m`, který se podobně jako změna
+soustavy může nacházet v místě argumentu operace.
+Současně ale platí, že samotný příkaz `m` hodnotu akumulátoru nemění.
+
+Příkazy pro práci s pamětí nezpůsobí výpis hodnoty akumulátoru.
+Použití příkazů je ilustrováno v následujícím příkladu:
+
+------------------------------------------
+P 3 ;    akumulator = 3, pamet = 0
+# 3
+M   ;    akumulator = 3, pamet = 3
+R   ;    akumulator = 3, pamet = 0
+M   ;    akumulator = 3, pamet = 3
++ m ;    akumulator = 3 + 3 = 6, pamet = 3
+# 6
+=
+# 6
+------------------------------------------
+
+[#requirements-output]
+=== Výstup
+
+Výstupem jsou výsledky jednotlivých operací po každém příkazu, na který
+kalkulačka narazí (vyjma práce s pamětí),
+nebo chybová hláška, která vznikla chybou během výpočtu.
+
+Výstup začíná znakem `#`, následuje právě jedna mezera `' '` a výsledek
+aktuálního příkazu.
+Každému provedenému příkazu odpovídá právě jeden řádek.
+Ve výstupu se již nebudou vyskytovat žádné bílé znaky kromě těch, které jsou
+explicitně zmíněné v zadání.
+To stejné platí pro všechny výše uvedené číselné soustavy.
+
+Ze standardního vstupu přestaňte číst, jakmile funkce pro čtení signalizuje
+konec vstupu hodnotou `EOF` (_End of File_).
+V případě úspěšného výpočtu ukončete program s návratovou
+hodnotou `EXIT_SUCCESS`.
+
+[WARNING]
+====
+Dodržujte přesně požadovaný formát výpisu z důvodu automatické kontroly na
+shodu výstupu při opravovaní.
+Pokud si nejste jisti, srovnejte svůj výstup se vzorovou implementací.
+====
+
+[#requirements-output-errors]
+==== Chyby
+
+Během načítání vstupu i samotného výpočtu mohou nastat chyby, které vaše
+kalkulačka musí umět ošetřit.
+Pokud narazíte na chybu, ukončete výpočet s chybovou hláškou vytisknutou
+na chybovém výstupu a návratovou hodnotou `EXIT_FAILURE`.
+
+K výpisu chyb použijte funkci
+link:https://en.cppreference.com/w/c/io/fprintf[`fprintf`],
+která se volá následovně:
+
+[source,c]
+------------------------------------------
+fprintf(stderr, "%s\n", error_message);
+------------------------------------------
+
+Chybové hlášky (`error_message` v ukázce) jsou následující:
+
+* `"Syntax error"` - chyba v syntaxi vstupu, např. chybné pořadí operací,
+neexistující příkazy, chybný formát čísla, chybějící argumenty,
+* `"Division by zero"` - pokus o dělení nulou.
+
+Opět přesně dodržujte zmíněný formát a výpis.
+Všimněte si, že při výpisu chyby se znak `#` na začátku výstupu vynechává.
+Pro vyjasnění chování v okrajových případech využijte vzorovou
+implementaci na Aise.
+
+[NOTE]
+====
+V případě chybných vstupů není kontrolován standardní výstup programu, ale
+pouze standardní chybový výstup.
+====
+
+[#bonus]
+== Bonusová rozšíření
+
+Tato část zadání je bonusová, není tedy nutné ji vypracovat.
+Za její vypracování je však možné získat 2 body
+navíc nad rámec základních bodů.
+
+[#bonus_1]
+=== Kontrola přetečení a podtečení vstupu (1 bod)
+
+Vhodným způsobem implementujte kontrolu vstupních hodnot na přetečení
+a podtečení.
+Pokud k této chybě dojde, vypište na standardní chybový výstup (`stderr`)
+chybovou hlášku `"Out of range"`.
+Formát zůstává stejný jako je uveden v
+link:#requirements-output-errors[sekci o chybách] výše.
+
+------------------------------------------
+P 1 ;
+# 1
+- 2 ; vypise Out of range na standardni chybovy vystup
+------------------------------------------
+
+[#bonus_2]
+=== Další bitové operace (1 bod)
+
+Implementujte operace bitových rotací o zadaný počet bitů.
+Příkazy jsou označeny znaky `r` (rotace doprava) a `l` (rotace doleva).
+
+Příklady rotací na 64-bitových číslech:
+----
+11010001 10000000 00000000 00000000 00000000 00000000 00000000 10101100
+Bitová rotace doleva o 10 bitů:
+00000000 00000000 00000000 00000000 00000000 00000010 10110011 01000110
+----
+
+------------------------------------------
+P 15096065950945902764 ;
+# 15096065950945902764
+l 10 ;
+# 176966
+------------------------------------------
+
+----
+11010001 10000000 00000000 00000000 00000000 00000000 00000000 10101100
+Bitová rotace doprava o 10 bitů:
+00101011 00110100 01100000 00000000 00000000 00000000 00000000 00000000
+----
+
+------------------------------------------
+P 15096065950945902764 ;
+# 15096065950945902764
+r 10 ;
+# 3113218795536121856
+------------------------------------------
+
+[#notes]
+== Poznámky
+
+* K načítání vstupu vám bude zcela stačit knihovní funkce
+  link:https://en.cppreference.com/w/c/io/getchar[`getchar`].
+* Zda je znak bílý, lze ověřit pomocí funkce
+  link:https://en.cppreference.com/w/c/string/byte/isspace[`isspace`].
+* K unifikaci velikosti písmene můžete použít funkci
+  link:https://en.cppreference.com/w/c/string/byte/toupper[`toupper`].
+* Vhodné datové typy můžete najít v hlavičce
+  link:https://en.cppreference.com/w/c/types/integer[`stdint.h`].
+* Pro testování své implementace můžete na Linuxu použít např.
+  příkaz `echo`, jehož výstup se stane vstupem vaší implementace:
++
+[source,bash]
+----
+echo -en 'P 21 + 43 * 5 =' | ./calc
+echo -en 'P\n21+\t43 * 5 =' | ./calc
+echo -en 'P 10 < 3' | ./calc
+----
++
+Na Windows doporučujeme použít
+link:https://www.fi.muni.cz/pb071/man/#wsl[Windows Subsystem for Linux]
+nebo
+link:https://www.fi.muni.cz/pb071/man/#git-for-windows-verzovac%C3%AD-syst%C3%A9m[Git Bash].
++
+Některé Linuxové distribuce nepodporují všechny přepínače.
+Pokud u vás `echo`
+některý z přepínačů `e` a `n` nezná, testujte svůj kód na Aise.
+
+* Makra `EXIT_SUCCESS` a `EXIT_FAILURE` najdete v hlavičce `stdlib.h`.
+* Vzorovou implementaci najdete na Aise `/home/kontr/pb071/hw01/calc`.
+
+* Bystrý čtenář si možná povšiml, že v některých ukázkách dochází k výpisu
+až po zapsání celého řádku, nikoliv bezprostředně po zadání konkrétního
+znaku, který měl výpis vyvolat.
+Je tomu tak proto, že i když vstup čtete po jednotlivých znacích, standardní
+knihovna programu předává vstup teprve tehdy, kdy má k dispozici celý řádek.
